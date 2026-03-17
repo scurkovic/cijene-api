@@ -210,6 +210,15 @@ class KauflandCrawler(BaseCrawler):
             )
             return []
 
+    def parse_csv(self, content: str, delimiter: str = ",") -> list[Product]:
+        # Some Kaufland stores use "WG" instead of "kategorija proizvoda"
+        # as the column header. Normalize before parsing.
+        lines = content.split("\n")
+        if lines and "kategorija proizvoda" not in lines[0] and "\tWG" in lines[0]:
+            lines[0] = lines[0].replace("\tWG", "\tkategorija proizvoda")
+            content = "\n".join(lines)
+        return super().parse_csv(content, delimiter)
+
     def parse_csv_row(self, row: dict) -> Product:
         anchor_price = row.get("Sidrena cijena")
         row["Datum sidrenja"] = ""
