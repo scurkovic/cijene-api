@@ -81,10 +81,6 @@ class KauflandCrawler(BaseCrawler):
         "Samobor",
     ]
 
-    # Pattern to extract date and price from anchor price string
-    # Example format: "MPC 2.5.2025=7,99€"
-    ANCHOR_PRICE_PATTERN = re.compile(r"MPC\s+(\d+\.\d+\.\d+)=(.+)")
-
     # Pattern to parse store information from filename
     # Format: Supermarket_Put_Gaceleza_1D_Vodice_6730_15_05_2025_7_30.csv
     ADDRESS_PATTERN = re.compile(r"(Supermarket|Hipermarket)_(.+?)_(\d{4})_")
@@ -220,30 +216,58 @@ class KauflandCrawler(BaseCrawler):
         return super().parse_csv(content, delimiter)
 
     def parse_csv_row(self, row: dict) -> Product:
-        anchor_price = row.get("Sidrena cijena")
-        row["Datum sidrenja"] = ""
+        # "Sidrena cijena" (anchor price) contains an encoded date + price.
+        # Variants seen in the wild:
+        #   "MPC 2.5.2025=7,99€"      — standard format
+        #   "MPC28.10.2025=3,99€"      — no space after MPC
+        #   "MPC 9.9.2025 = 6,49"      — spaces around =, no € suffix
+        #   "MPC 2.5.2025.=9,49€"      — extra trailing dot in date
+        #   "MPC18.10..2025=5,59€"     — double dot in date
+        #   "MPC 05082025=40,21€"      — no dots in date (ddmmYYYY)
+        #   "MPC 26.09.205=3,39€"      — truncated year (unparseable, price still captured)
+        #   "500 g", "Miss Dream"       — garbage from shifted columns (discarded)
+        anchor_price = row.get("Sidrena cijena", "").strip()
+        anchor_date = ""
 
-        if anchor_price:
-            match = self.ANCHOR_PRICE_PATTERN.search(anchor_price)
-            if match:
-                date_str, price_str = match.groups()
+        if anchor_price and anchor_price.startswith("MPC") and "=" in anchor_price:
+            # Split into date part and price part on "="
+            date_part, price_str = anchor_price.split("=", 1)
+            date_part = date_part[3:].strip()  # Remove "MPC" prefix
+            price_str = price_str.strip().rstrip("€").strip()
 
-                try:
-                    # Try 4-digit year first, then fall back to 2-digit year
-                    try:
-                        parsed_date = datetime.datetime.strptime(date_str, "%d.%m.%Y")
-                    except ValueError:
-                        parsed_date = datetime.datetime.strptime(date_str, "%d.%m.%y")
+            # Always use the price if we got one
+            row["Sidrena cijena"] = price_str
 
-                    row["Datum sidrenja"] = parsed_date.date().strftime("%Y-%m-%d")
-                    row["Sidrena cijena"] = price_str
-                except (ValueError, IndexError) as e:
-                    logger.warning(f"Error parsing anchor price {anchor_price}: {e}")
-                    row["Sidrena cijena"] = ""
-            else:
-                row["Sidrena cijena"] = ""
+            # Try to parse the date (best-effort)
+            anchor_date = self._parse_anchor_date(date_part)
+        elif anchor_price and not anchor_price.startswith("MPC"):
+            # Garbage value (shifted column data) — discard
+            row["Sidrena cijena"] = ""
 
-        return super().parse_csv_row(row)
+        product = super().parse_csv_row(row)
+
+        if anchor_date:
+            product.anchor_price_date = anchor_date
+
+        return product
+
+    def _parse_anchor_date(self, date_part: str) -> str:
+        """Try to parse a date from the anchor price date string. Returns ISO date or ''."""
+        # Clean up common noise: trailing dots, double dots
+        date_part = date_part.rstrip(".")
+        date_part = date_part.replace("..", ".")
+
+        for fmt in ("%d.%m.%Y", "%d.%m.%y", "%d%m%Y"):
+            try:
+                return (
+                    datetime.datetime.strptime(date_part, fmt)
+                    .date()
+                    .strftime("%Y-%m-%d")
+                )
+            except ValueError:
+                continue
+
+        return ""
 
     def get_all_products(self, date: datetime.date) -> list[Store]:
         """
