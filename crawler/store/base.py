@@ -40,7 +40,7 @@ class BaseCrawler:
 
     def __init__(self):
         self.client = httpx.Client(
-            timeout=30.0,
+            timeout=self.TIMEOUT,
             follow_redirects=True,
             verify=self.VERIFY_TLS_CERT,
         )

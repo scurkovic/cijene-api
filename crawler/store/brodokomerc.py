@@ -29,6 +29,7 @@ class BrodokomercCrawler(BaseCrawler):
     """
 
     CHAIN = "brodokomerc"
+    TIMEOUT = 120.0
     BASE_URL = "http://www.brodokomerc.hr"
     INDEX_URL = "http://www.brodokomerc.hr/cijene"
 
