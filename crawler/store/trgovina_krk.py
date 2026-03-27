@@ -146,8 +146,9 @@ class TrgovinaKrkCrawler(BaseCrawler):
         # Examples:
         # "Supermarket Set. sv. Bernardina 6C KRK"
         # "Supermarket Trg sv. Jurja 11 A GORNJA STUBICA"
+        # "Supermarket Ulica dr.Franje Tudmana 1 SV.KRIZ ZACRETJE"
         # Pattern: Supermarket (address ending with number+optional letter) (UPPERCASE CITY)
-        pattern = r"Supermarket (.*?[ 0-9][a-zA-Z]?) ([A-Z][ A-Z]*|[A-Z]+)$"
+        pattern = r"Supermarket (.*?[ 0-9][a-zA-Z]?) ([A-Z][A-Z. ]*[A-Z])$"
         match = re.match(pattern, header_text)
 
         if not match:
